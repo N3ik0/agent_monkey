@@ -27,6 +27,6 @@ class MonkeySignal:
         """
         if not(0.0 <= self.confidence <= 1.0):
             raise ValueError(
-                f"Erreur fatale ({self.monkey_name}) : "
+                f"Fatal error ({self.monkey_name}): "
                 f"Confidence should be between 0.0 and 1.0, Receive: {self.confidence}"
             )
