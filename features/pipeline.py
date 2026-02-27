@@ -30,7 +30,7 @@ class FeaturePipeline:
         self.features.append(feature)
         return self
 
-    def generate(self, raw_df: pd.DataFrame) -> pd.Dataframe:
+    def generate(self, raw_df: pd.DataFrame) -> pd.DataFrame:
         """
         Executes the feature generation sequentially.
         
