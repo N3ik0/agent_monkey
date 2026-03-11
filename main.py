@@ -26,27 +26,28 @@ from core.monkeys.trend_monkey import TrendMonkey
 from core.monkeys.momentum_monkey import MomentumMonkey
 from core.monkeys.risk_monkey import RiskMonkey
 from backtesting.engine import BacktestEngine
+from core.market_config import MarketConfig
 
 
-def build_pipeline(interval: str = "1d") -> FeaturePipeline:
+def build_pipeline(config: dict) -> FeaturePipeline:
     """
     Constructs the feature pipeline with all active indicators.
-    Dynamically adjusts SMA windows for 4h intervals.
+    Dynamically adjusts SMA windows based on the market config.
 
     Args:
-        interval (str): The timeframe to configure indicators for.
+        config (dict): Configuration dictionary containing settings.
 
     Returns:
         FeaturePipeline: A configured pipeline ready to process raw OHLCV data.
     """
     pipeline = FeaturePipeline()
     
-    if interval == "4h":
-        pipeline.add_feature(SMAFeature(window=8))
-        pipeline.add_feature(SMAFeature(window=21))
-    else:
-        pipeline.add_feature(SMAFeature(window=20))
-        pipeline.add_feature(SMAFeature(window=50))
+    # Extract periods from strings like "SMA_8" -> 8
+    fast_period = int(config.get("fast_ma", "SMA_20").split("_")[1])
+    slow_period = int(config.get("slow_ma", "SMA_50").split("_")[1])
+    
+    pipeline.add_feature(SMAFeature(window=fast_period))
+    pipeline.add_feature(SMAFeature(window=slow_period))
         
     pipeline.add_feature(EMAFeature(window=12))
     pipeline.add_feature(EMAFeature(window=26))
@@ -57,23 +58,20 @@ def build_pipeline(interval: str = "1d") -> FeaturePipeline:
     return pipeline
 
 
-def build_orchestrator(interval: str = "1d") -> MarketOrchestrator:
+def build_orchestrator(config: dict) -> MarketOrchestrator:
     """
     Constructs the orchestrator with the available trading agents.
-    Passes the correct dynamic columns to TrendMonkey based on the interval.
+    Passes the correct dynamic columns to TrendMonkey based on config.
 
     Args:
-        interval (str): The timeframe to configure agents for.
+        config (dict): Configuration dictionary containing settings.
 
     Returns:
         MarketOrchestrator: A configured orchestrator with all active Monkeys.
     """
-    if interval == "4h":
-        fast_sma = "SMA_8"
-        slow_sma = "SMA_21"
-    else:
-        fast_sma = "SMA_20"
-        slow_sma = "SMA_50"
+    fast_sma = config.get("fast_ma", "SMA_20")
+    slow_sma = config.get("slow_ma", "SMA_50")
+    threshold = config.get("activation_threshold", 0.4)
         
     monkeys = [
         TrendMonkey(name="TrendMonkey", fast_col=fast_sma, slow_col=slow_sma, weight=1.0),
@@ -86,7 +84,7 @@ def build_orchestrator(interval: str = "1d") -> MarketOrchestrator:
             weight=1.0
         ),
     ]
-    return MarketOrchestrator(monkeys=monkeys, activation_threshold=0.4)
+    return MarketOrchestrator(monkeys=monkeys, activation_threshold=threshold)
 
 
 
@@ -109,13 +107,15 @@ def run_backtest(
     Returns:
         List[dict]: A list of consensus dictionaries, one per simulated day.
     """
+    config = MarketConfig.load(ticker)
+    
     # 1. Fetch raw data
     router = DataFetcherRouter()
     raw_df = router.fetch(ticker=ticker, period=period, interval=interval)
     print(f"📡 Fetched {len(raw_df)} candles for {ticker} ({period}, {interval})")
 
     # 2. Compute features
-    pipeline = build_pipeline(interval=interval)
+    pipeline = build_pipeline(config=config)
     processed_df = pipeline.generate(raw_df)
     print(f"🔧 Features computed: {pipeline.get_feature_name()}")
     print(f"📊 Rows after NaN cleanup: {len(processed_df)}")
@@ -127,7 +127,7 @@ def run_backtest(
         )
 
     # 3. Build orchestrator
-    orchestrator = build_orchestrator(interval=interval)
+    orchestrator = build_orchestrator(config=config)
 
     # 4. Simulate signals for the last N days
     effective_lookback = min(lookback, len(processed_df) - 1)
@@ -184,7 +184,7 @@ def run_backtest(
 
     # 7. Execute the Backtest Engine
     engine = BacktestEngine(initial_capital=1000.0, risk_per_trade=0.02)
-    stats = engine.run(processed_df, results, ticker)
+    stats = engine.run(processed_df, results, ticker, config)
     engine.print_report(stats)
 
     return results

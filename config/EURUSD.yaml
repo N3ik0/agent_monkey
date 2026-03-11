@@ -1,0 +1,8 @@
+fast_ma: EMA_20
+slow_ma: EMA_50
+atr_sl_multiplier: 1.0
+rr_ratio: 1.5
+min_confidence: 0.55
+activation_threshold: 0.45
+cooldown_candles: 4
+cooldown_override_confidence: 0.65

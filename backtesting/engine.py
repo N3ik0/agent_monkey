@@ -18,7 +18,7 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
 
-    def run(self, processed_df: pd.DataFrame, signals: List[dict], ticker: str) -> Dict[str, Any]:
+    def run(self, processed_df: pd.DataFrame, signals: List[dict], ticker: str, config: dict = None) -> Dict[str, Any]:
         """
         Executes the backtest simulation.
 
@@ -26,10 +26,20 @@ class BacktestEngine:
             processed_df (pd.DataFrame): Market data containing OHLCV and technical features.
             signals (List[dict]): List of consensus signals from the orchestrator.
             ticker (str): The asset being tested.
+            config (dict, optional): Market configuration mapping (ATR multiplier, cooldown, etc.).
 
         Returns:
             dict: Performance metrics and detailed trade history.
         """
+        if config is None:
+            config = {}
+            
+        atr_sl_multiplier = config.get("atr_sl_multiplier", 1.5)
+        rr_ratio = config.get("rr_ratio", 2.0)
+        min_confidence = config.get("min_confidence", 0.50)
+        cooldown_candles = config.get("cooldown_candles", 6)
+        cooldown_override = config.get("cooldown_override_confidence", 0.70)
+        
         capital = self.initial_capital
         peak_capital = capital
         max_drawdown = 0.0
@@ -56,6 +66,7 @@ class BacktestEngine:
         start_idx = start_indices[0]
         
         pending_entry = None
+        active_cooldown = 0
         for i in range(start_idx, len(processed_df)):
             row = processed_df.iloc[i]
             date_str = df_dates.iloc[i]
@@ -113,7 +124,15 @@ class BacktestEngine:
                     current_trade['outcome'] = outcome
                     trades.append(current_trade)
                     is_in_position = False
+                    
+                    if outcome == 'LOSS':
+                        active_cooldown = cooldown_candles
+                        
                     current_trade = None
+
+            # Track cooldown decrement
+            if not is_in_position and pending_entry is None and active_cooldown > 0:
+                active_cooldown -= 1
 
             # c. Check for new signals if no position is active (Anti-overlap / Anti-doublon filter)
             # The `pending_entry is None` check absolutely guarantees that a new signal 
@@ -121,24 +140,28 @@ class BacktestEngine:
             if not is_in_position and pending_entry is None and date_str in signal_map:
                 sig_info = signal_map[date_str]
                 signal = sig_info["Signal"]
+                confidence = sig_info.get("Confiance", 0.0)
                 
-                if signal in ["BUY", "SELL"]:
+                # Verify minimum confidence requirement
+                if signal in ["BUY", "SELL"] and confidence >= min_confidence:
+                    
+                    # Verify Cooldown block
+                    if active_cooldown > 0 and confidence < cooldown_override:
+                        continue # Skip this signal because we are in cooldown from a recent loss
+                        
                     entry = float(row['close'])
                     raw_atr = row.get("ATR_14", pd.NA)
                     atr = float(raw_atr) if not pd.isna(raw_atr) else pd.NA
                     
                     if not pd.isna(atr) and atr > 0:
-                        # Hardcoded risk profile parameters (1.5x ATR SL, 1:2 R:R)
-                        atr_multiplier = 1.5
-                        rr_ratio = 2.0
                         
                         if signal == "BUY":
-                            sl = entry - (atr * atr_multiplier)
-                            tp = entry + (atr * atr_multiplier * rr_ratio)
+                            sl = entry - (atr * atr_sl_multiplier)
+                            tp = entry + (atr * atr_sl_multiplier * rr_ratio)
                             risk_per_unit = entry - sl
                         else:
-                            sl = entry + (atr * atr_multiplier)
-                            tp = entry - (atr * atr_multiplier * rr_ratio)
+                            sl = entry + (atr * atr_sl_multiplier)
+                            tp = entry - (atr * atr_sl_multiplier * rr_ratio)
                             risk_per_unit = sl - entry
                             
                         if risk_per_unit > 0:

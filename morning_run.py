@@ -4,6 +4,7 @@ from typing import List
 from data.fetcher_router import DataFetcherRouter
 from core.types import TradePlan
 from core.monkeys.risk_monkey import RiskMonkey
+from core.market_config import MarketConfig
 # Import the builders from main.py to avoid redefining the whole application stack
 from main import build_pipeline, build_orchestrator
 
@@ -17,8 +18,6 @@ def scan_market(watchlist: List[str], period: str = "6mo", interval: str = "1d")
     """
     # 1. Fetch raw data via the Router (Fail-Fast inside router, caught here)
     router = DataFetcherRouter()
-    pipeline = build_pipeline(interval=interval)
-    orchestrator = build_orchestrator(interval=interval)
     
     # Instantiate RiskMonkey explicitly for TradePlan generation
     risk_monkey = RiskMonkey()
@@ -32,6 +31,10 @@ def scan_market(watchlist: List[str], period: str = "6mo", interval: str = "1d")
     for ticker in watchlist:
         print(f"📡 Processing {ticker}...", end=" ")
         try:
+            config = MarketConfig.load(ticker)
+            pipeline = build_pipeline(config=config)
+            orchestrator = build_orchestrator(config=config)
+            
             # 1. Fetch raw data via the Router (Fail-Fast inside router, caught here)
             raw_df = router.fetch(ticker=ticker, period=period, interval=interval)
             
