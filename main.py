@@ -13,16 +13,18 @@ from typing import List
 
 import pandas as pd
 
-from data.yfinance_fetcher import YFinanceDataFetcher
+from data.fetcher_router import DataFetcherRouter
 from features.pipeline import FeaturePipeline
 from features.technical.sma import SMAFeature
 from features.technical.ema import EMAFeature
 from features.technical.rsi import RSIFeature
 from features.technical.macd import MACDFeature
 from features.technical.bollinger import BollingerFeature
+from features.technical.atr import ATRFeature
 from core.orchestrator import MarketOrchestrator
 from core.monkeys.trend_monkey import TrendMonkey
 from core.monkeys.momentum_monkey import MomentumMonkey
+from core.monkeys.risk_monkey import RiskMonkey
 
 
 def build_pipeline() -> FeaturePipeline:
@@ -40,6 +42,7 @@ def build_pipeline() -> FeaturePipeline:
     pipeline.add_feature(RSIFeature(window=14))
     pipeline.add_feature(MACDFeature())
     pipeline.add_feature(BollingerFeature(window=20))
+    pipeline.add_feature(ATRFeature(window=14))
     return pipeline
 
 
@@ -53,6 +56,7 @@ def build_orchestrator() -> MarketOrchestrator:
     monkeys = [
         TrendMonkey(name="TrendMonkey", fast_col="SMA_20", slow_col="SMA_50", weight=1.0),
         MomentumMonkey(name="MomentumMonkey", rsi_col="RSI_14", weight=1.0),
+        RiskMonkey(name="RiskMonkey", atr_col="ATR_14", weight=1.0),
     ]
     return MarketOrchestrator(monkeys=monkeys, activation_threshold=0.4)
 
@@ -68,7 +72,7 @@ def run_backtest(
     and collects the orchestrator's consensus for each day.
 
     Args:
-        ticker (str): The asset symbol (e.g., 'BTC-USD').
+        ticker (str): The asset symbol (e.g., 'BTC-USD' or 'BTC/USDT').
         period (str): The data period to fetch (e.g., '6mo', '1y').
         interval (str): The candle interval (e.g., '1d').
         lookback (int): Number of recent days to simulate signals for.
@@ -77,8 +81,8 @@ def run_backtest(
         List[dict]: A list of consensus dictionaries, one per simulated day.
     """
     # 1. Fetch raw data
-    fetcher = YFinanceDataFetcher()
-    raw_df = fetcher.fetch(ticker=ticker, period=period, interval=interval)
+    router = DataFetcherRouter()
+    raw_df = router.fetch(ticker=ticker, period=period, interval=interval)
     print(f"📡 Fetched {len(raw_df)} candles for {ticker} ({period}, {interval})")
 
     # 2. Compute features
@@ -141,6 +145,12 @@ def run_backtest(
     print(f"  SUMMARY: 🟢 BUY={buy_count}  🔴 SELL={sell_count}  ⚪ WAIT={wait_count}")
     print(f"  Latest Signal: {results[-1]['Signal']} (Confidence: {results[-1]['Confiance']:.2f})")
     print(f"{'='*70}")
+
+    # 6. Generate TradePlan for the latest signal
+    risk_monkey = next((m for m in orchestrator.monkeys if isinstance(m, RiskMonkey)), None)
+    if risk_monkey and results:
+        trade_plan = risk_monkey.compute_trade_plan(processed_df, results[-1], ticker)
+        print(f"\n{trade_plan.to_markdown()}\n")
 
     return results
 

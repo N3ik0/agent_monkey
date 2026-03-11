@@ -133,7 +133,7 @@ Les tests incluent :
 
 ## 🧩 Étendre le système
 
-### Ajouter un nouvel indicateur
+### Ajouter un nouvel indicateurf
 
 Créer un fichier dans `features/technical/` :
 
