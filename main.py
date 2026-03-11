@@ -25,6 +25,7 @@ from core.orchestrator import MarketOrchestrator
 from core.monkeys.trend_monkey import TrendMonkey
 from core.monkeys.momentum_monkey import MomentumMonkey
 from core.monkeys.risk_monkey import RiskMonkey
+from backtesting.engine import BacktestEngine
 
 
 def build_pipeline() -> FeaturePipeline:
@@ -104,7 +105,7 @@ def run_backtest(
     results: List[dict] = []
 
     print(f"\n{'='*70}")
-    print(f"  BACKTEST: {ticker} — Last {effective_lookback} trading days")
+    print(f"  MACRO BACKTEST: {ticker} — Last {effective_lookback} trading days")
     print(f"{'='*70}\n")
     print(f"{'Date':<14} {'Signal':<8} {'Confidence':<12} {'Score':<10} {'Agents Log'}")
     print(f"{'-'*14} {'-'*8} {'-'*12} {'-'*10} {'-'*40}")
@@ -150,6 +151,11 @@ def run_backtest(
     if results:
         trade_plan = risk_monkey.compute_trade_plan(processed_df, results[-1], ticker)
         print(f"\n{trade_plan.to_markdown()}\n")
+
+    # 7. Execute the Backtest Engine
+    engine = BacktestEngine(initial_capital=1000.0, risk_per_trade=0.02)
+    stats = engine.run(processed_df, results, ticker)
+    engine.print_report(stats)
 
     return results
 
