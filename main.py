@@ -28,16 +28,26 @@ from core.monkeys.risk_monkey import RiskMonkey
 from backtesting.engine import BacktestEngine
 
 
-def build_pipeline() -> FeaturePipeline:
+def build_pipeline(interval: str = "1d") -> FeaturePipeline:
     """
     Constructs the feature pipeline with all active indicators.
+    Dynamically adjusts SMA windows for 4h intervals.
+
+    Args:
+        interval (str): The timeframe to configure indicators for.
 
     Returns:
         FeaturePipeline: A configured pipeline ready to process raw OHLCV data.
     """
     pipeline = FeaturePipeline()
-    pipeline.add_feature(SMAFeature(window=20))
-    pipeline.add_feature(SMAFeature(window=50))
+    
+    if interval == "4h":
+        pipeline.add_feature(SMAFeature(window=8))
+        pipeline.add_feature(SMAFeature(window=21))
+    else:
+        pipeline.add_feature(SMAFeature(window=20))
+        pipeline.add_feature(SMAFeature(window=50))
+        
     pipeline.add_feature(EMAFeature(window=12))
     pipeline.add_feature(EMAFeature(window=26))
     pipeline.add_feature(RSIFeature(window=14))
@@ -47,18 +57,30 @@ def build_pipeline() -> FeaturePipeline:
     return pipeline
 
 
-def build_orchestrator() -> MarketOrchestrator:
+def build_orchestrator(interval: str = "1d") -> MarketOrchestrator:
     """
     Constructs the orchestrator with the available trading agents.
+    Passes the correct dynamic columns to TrendMonkey based on the interval.
+
+    Args:
+        interval (str): The timeframe to configure agents for.
 
     Returns:
         MarketOrchestrator: A configured orchestrator with all active Monkeys.
     """
+    if interval == "4h":
+        fast_sma = "SMA_8"
+        slow_sma = "SMA_21"
+    else:
+        fast_sma = "SMA_20"
+        slow_sma = "SMA_50"
+        
     monkeys = [
-        TrendMonkey(name="TrendMonkey", fast_col="SMA_20", slow_col="SMA_50", weight=1.0),
+        TrendMonkey(name="TrendMonkey", fast_col=fast_sma, slow_col=slow_sma, weight=1.0),
         MomentumMonkey(name="MomentumMonkey", rsi_col="RSI_14", weight=1.0),
     ]
     return MarketOrchestrator(monkeys=monkeys, activation_threshold=0.4)
+
 
 
 def run_backtest(
@@ -86,7 +108,7 @@ def run_backtest(
     print(f"📡 Fetched {len(raw_df)} candles for {ticker} ({period}, {interval})")
 
     # 2. Compute features
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(interval=interval)
     processed_df = pipeline.generate(raw_df)
     print(f"🔧 Features computed: {pipeline.get_feature_name()}")
     print(f"📊 Rows after NaN cleanup: {len(processed_df)}")
@@ -98,7 +120,7 @@ def run_backtest(
         )
 
     # 3. Build orchestrator
-    orchestrator = build_orchestrator()
+    orchestrator = build_orchestrator(interval=interval)
 
     # 4. Simulate signals for the last N days
     effective_lookback = min(lookback, len(processed_df) - 1)

@@ -17,8 +17,8 @@ def scan_market(watchlist: List[str], period: str = "6mo", interval: str = "1d")
     """
     # 1. Fetch raw data via the Router (Fail-Fast inside router, caught here)
     router = DataFetcherRouter()
-    pipeline = build_pipeline()
-    orchestrator = build_orchestrator()
+    pipeline = build_pipeline(interval=interval)
+    orchestrator = build_orchestrator(interval=interval)
     
     # Instantiate RiskMonkey explicitly for TradePlan generation
     risk_monkey = RiskMonkey()
