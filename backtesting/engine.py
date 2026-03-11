@@ -155,12 +155,31 @@ class BacktestEngine:
                                 'confidence': sig_info.get('Confiance', 0.0)
                             }
 
+        # Handle open positions at the end of the simulation
+        if is_in_position and current_trade is not None:
+            exit_price = float(processed_df.iloc[-1]['close'])
+            outcome = 'OPEN'
+            
+            if current_trade['direction'] == 'BUY':
+                pnl = (exit_price - current_trade['entry']) * current_trade['position_size']
+            else:
+                pnl = (current_trade['entry'] - exit_price) * current_trade['position_size']
+                
+            capital += pnl
+            current_trade['exit_date'] = str(df_dates.iloc[-1])
+            current_trade['exit_price'] = exit_price
+            current_trade['pnl'] = pnl
+            current_trade['outcome'] = outcome
+            trades.append(current_trade)
+
         nb_trades = len(trades)
-        wins = [t for t in trades if t['outcome'] == 'WIN']
-        win_rate = len(wins) / nb_trades if nb_trades > 0 else 0.0
+        resolved_trades = [t for t in trades if t['outcome'] != 'OPEN']
+        nb_resolved = len(resolved_trades)
+        wins = [t for t in resolved_trades if t['outcome'] == 'WIN']
+        win_rate = len(wins) / nb_resolved if nb_resolved > 0 else 0.0
         
-        gross_profit = sum(t['pnl'] for t in trades if t['pnl'] > 0)
-        gross_loss = abs(sum(t['pnl'] for t in trades if t['pnl'] < 0))
+        gross_profit = sum(t['pnl'] for t in resolved_trades if t['pnl'] > 0)
+        gross_loss = abs(sum(t['pnl'] for t in resolved_trades if t['pnl'] < 0))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0.0)
         
         total_return = (capital - self.initial_capital) / self.initial_capital
@@ -220,10 +239,15 @@ class BacktestEngine:
             for t in result['trades']:
                 pnl = t['pnl']
                 pnl_str = f"{pnl:.2f}"
-                pnl_disp = f"\033[92m+{pnl_str}\033[0m" if pnl > 0 else f"\033[91m{pnl_str}\033[0m"
+                
+                if t['outcome'] == "OPEN":
+                    pnl_disp = f"\033[93m{pnl_str}\033[0m" if pnl < 0 else f"\033[93m+{pnl_str}\033[0m"
+                    outcome_color = "🟡 OPEN"
+                else:
+                    pnl_disp = f"\033[92m+{pnl_str}\033[0m" if pnl > 0 else f"\033[91m{pnl_str}\033[0m"
+                    outcome_color = "✅ WIN " if t['outcome'] == "WIN" else "❌ LOSS"
                 
                 dir_color = "🟢 BUY " if t['direction'] == "BUY" else "🔴 SELL"
-                outcome_color = "✅ WIN " if t['outcome'] == "WIN" else "❌ LOSS"
                 
                 print(
                     f"{t['entry_date']:<12} | "
