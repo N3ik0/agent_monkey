@@ -115,7 +115,9 @@ class BacktestEngine:
                     is_in_position = False
                     current_trade = None
 
-            # c. Check for new signals if no position is active
+            # c. Check for new signals if no position is active (Anti-overlap / Anti-doublon filter)
+            # The `pending_entry is None` check absolutely guarantees that a new signal 
+            # on the current candle is ignored if we already have a signal waiting to be executed on the next open.
             if not is_in_position and pending_entry is None and date_str in signal_map:
                 sig_info = signal_map[date_str]
                 signal = sig_info["Signal"]
