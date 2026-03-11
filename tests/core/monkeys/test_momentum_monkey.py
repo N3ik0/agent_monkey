@@ -1,74 +1,100 @@
-"""Tests for MomentumMonkey."""
 import pytest
 import pandas as pd
 from core.types import Action
 from core.monkeys.momentum_monkey import MomentumMonkey
 
-
 @pytest.fixture
 def monkey() -> MomentumMonkey:
     """Creates a default MomentumMonkey instance."""
-    return MomentumMonkey(name="TestMomentum", rsi_col="RSI_14")
-
+    return MomentumMonkey(name="TestMomentum")
 
 def test_momentum_monkey_buy(monkey: MomentumMonkey) -> None:
-    """RSI below 30 should produce a BUY signal."""
-    df = pd.DataFrame({"RSI_14": [50.0, 45.0, 20.0]})
+    """RSI > 50, MACD > 0 and MACD > Signal Line should produce a BUY signal."""
+    df = pd.DataFrame({
+        "RSI_14": [60.0],
+        "MACD_line": [1.5],
+        "MACD_signal": [1.0],
+        "ATR_14": [10.0]
+    })
     signal = monkey.analyze(df)
-
+    
     assert signal.action == Action.BUY
-    assert signal.confidence > 0.0
-    assert signal.confidence <= 1.0
-
+    # RSI strength: abs(60-50)/50 = 0.2
+    # MACD strength: abs(1.5)/(10.0*0.1) = min(1.5/1.0, 1.0) = 1.0
+    # Confidence: (0.2 + 1.0) / 2 = 0.6
+    assert signal.confidence == 0.6
 
 def test_momentum_monkey_sell(monkey: MomentumMonkey) -> None:
-    """RSI above 70 should produce a SELL signal."""
-    df = pd.DataFrame({"RSI_14": [50.0, 65.0, 85.0]})
+    """RSI < 50, MACD < 0 and MACD < Signal Line should produce a SELL signal."""
+    df = pd.DataFrame({
+        "RSI_14": [40.0],
+        "MACD_line": [-1.5],
+        "MACD_signal": [-1.0],
+        "ATR_14": [10.0]
+    })
     signal = monkey.analyze(df)
-
+    
     assert signal.action == Action.SELL
-    assert signal.confidence > 0.0
-    assert signal.confidence <= 1.0
+    # RSI strength: abs(40-50)/50 = 0.2
+    # MACD strength: abs(-1.5)/(10.0*0.1) = min(1.5/1.0, 1.0) = 1.0
+    # Confidence: (0.2 + 1.0) / 2 = 0.6
+    assert signal.confidence == 0.6
 
-
-def test_momentum_monkey_wait(monkey: MomentumMonkey) -> None:
-    """RSI in the neutral zone (30-70) should produce a WAIT signal."""
-    df = pd.DataFrame({"RSI_14": [50.0, 55.0, 45.0]})
+def test_momentum_monkey_wait_contradictory(monkey: MomentumMonkey) -> None:
+    """RSI > 50 but MACD < 0 should produce a WAIT signal."""
+    df = pd.DataFrame({
+        "RSI_14": [60.0],
+        "MACD_line": [-1.5],
+        "MACD_signal": [-2.0],
+        "ATR_14": [10.0]
+    })
     signal = monkey.analyze(df)
-
+    
     assert signal.action == Action.WAIT
     assert signal.confidence == 0.0
 
-
-def test_momentum_monkey_extreme_buy(monkey: MomentumMonkey) -> None:
-    """RSI at 0 should produce maximum BUY confidence."""
-    df = pd.DataFrame({"RSI_14": [0.0]})
+def test_momentum_monkey_crossover_fail(monkey: MomentumMonkey) -> None:
+    """RSI > 50, MACD > 0 but MACD < Signal Line should produce a WAIT signal."""
+    df = pd.DataFrame({
+        "RSI_14": [60.0],
+        "MACD_line": [1.0],
+        "MACD_signal": [1.5],
+        "ATR_14": [10.0]
+    })
     signal = monkey.analyze(df)
+    
+    assert signal.action == Action.WAIT
+    assert signal.confidence == 0.0
 
+def test_momentum_monkey_missing_atr(monkey: MomentumMonkey) -> None:
+    """Missing ATR should fallback to 0.5 for MACD strength."""
+    df = pd.DataFrame({
+        "RSI_14": [60.0],
+        "MACD_line": [1.5],
+        "MACD_signal": [1.0],
+        "ATR_14": [pd.NA]
+    })
+    signal = monkey.analyze(df)
+    
     assert signal.action == Action.BUY
-    assert signal.confidence == 1.0
-
-
-def test_momentum_monkey_extreme_sell(monkey: MomentumMonkey) -> None:
-    """RSI at 100 should produce maximum SELL confidence."""
-    df = pd.DataFrame({"RSI_14": [100.0]})
-    signal = monkey.analyze(df)
-
-    assert signal.action == Action.SELL
-    assert signal.confidence == 1.0
-
+    # RSI: 0.2, MACD: 0.5 -> Conf: 0.35
+    assert signal.confidence == 0.35
 
 def test_momentum_monkey_nan_values(monkey: MomentumMonkey) -> None:
-    """NaN RSI should produce a WAIT signal with 0 confidence."""
-    df = pd.DataFrame({"RSI_14": [float("nan")]})
+    """NaN RSI/MACD should produce a WAIT signal with 0 confidence."""
+    df = pd.DataFrame({
+        "RSI_14": [pd.NA],
+        "MACD_line": [1.0],
+        "MACD_signal": [0.5],
+        "ATR_14": [10.0]
+    })
     signal = monkey.analyze(df)
-
+    
     assert signal.action == Action.WAIT
     assert signal.confidence == 0.0
 
-
 def test_momentum_monkey_missing_column(monkey: MomentumMonkey) -> None:
-    """Missing RSI column should raise KeyError."""
-    df = pd.DataFrame({"close": [100.0, 101.0]})
-    with pytest.raises(KeyError, match="RSI_14"):
+    """Missing MACD line column should raise KeyError."""
+    df = pd.DataFrame({"RSI_14": [50.0], "MACD_signal": [1.0], "close": [100.0]})
+    with pytest.raises(KeyError, match="Missing columns"):
         monkey.analyze(df)

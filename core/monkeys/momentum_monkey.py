@@ -5,17 +5,18 @@ from core.base_monkey import BaseMonkey
 
 class MomentumMonkey(BaseMonkey):
     """
-    A momentum-based trading agent that generates signals from the RSI indicator.
-    Uses classic RSI overbought/oversold thresholds to identify potential
-    reversals and continuation patterns.
+    A momentum-based trading agent that generates signals combining RSI and MACD.
+    - BUY: RSI > 50 & MACD > 0 & MACD > Signal Line
+    - SELL: RSI < 50 & MACD < 0 & MACD < Signal Line
     """
 
     def __init__(
         self,
         name: str,
         rsi_col: str = "RSI_14",
-        overbought: float = 70.0,
-        oversold: float = 30.0,
+        macd_col: str = "MACD_line",
+        macd_signal_col: str = "MACD_signal",
+        atr_col: str = "ATR_14",
         weight: float = 1.0,
     ):
         """
@@ -24,61 +25,57 @@ class MomentumMonkey(BaseMonkey):
         Args:
             name (str): Unique name for this agent instance.
             rsi_col (str): The RSI column name in the DataFrame (default 'RSI_14').
-            overbought (float): RSI threshold above which the asset is overbought (SELL signal).
-            oversold (float): RSI threshold below which the asset is oversold (BUY signal).
+            macd_col (str): The MACD value column (default 'MACD_line').
+            macd_signal_col (str): The MACD signal column (default 'MACD_signal').
+            atr_col (str): The ATR column to normalize confidence (default 'ATR_14').
             weight (float): Weight of this agent in the orchestrator consensus.
         """
         super().__init__(name, weight)
         self.rsi_col = rsi_col
-        self.overbought = overbought
-        self.oversold = oversold
+        self.macd_col = macd_col
+        self.macd_signal_col = macd_signal_col
+        self.atr_col = atr_col
 
     def analyze(self, market_data: pd.DataFrame) -> MonkeySignal:
         """
-        Analyzes market data using RSI to generate a trading signal.
-
-        Logic:
-            - RSI < oversold (30) → BUY (asset is undervalued)
-            - RSI > overbought (70) → SELL (asset is overvalued)
-            - Otherwise → WAIT
-
-        Confidence is proportional to how far RSI is from the neutral zone.
-
-        Args:
-            market_data (pd.DataFrame): DataFrame containing the RSI column.
-
-        Returns:
-            MonkeySignal: The agent's decision with action and confidence.
-
-        Raises:
-            KeyError: If the required RSI column is missing.
+        Analyzes market data using RSI and MACD to generate a trading signal.
         """
-        if self.rsi_col not in market_data.columns:
-            raise KeyError(
-                f"Fatal error: Missing column '{self.rsi_col}' for {self.name}. "
-                f"Ensure RSIFeature is in the FeaturePipeline."
-            )
+        required_cols = [self.rsi_col, self.macd_col, self.macd_signal_col]
+        missing = [c for c in required_cols if c not in market_data.columns]
+        if missing:
+            raise KeyError(f"Fatal error: Missing columns {missing} for {self.name}.")
 
         latest = market_data.iloc[-1]
 
-        # If RSI is NaN, we cannot make a decision
-        if pd.isna(latest[self.rsi_col]):
+        # If core indicators are NaN, wait
+        if pd.isna(latest[self.rsi_col]) or pd.isna(latest[self.macd_col]) or pd.isna(latest[self.macd_signal_col]):
             return MonkeySignal(self.name, Action.WAIT, 0.0)
 
-        rsi_value: float = latest[self.rsi_col]
+        rsi: float = float(latest[self.rsi_col])
+        macd: float = float(latest[self.macd_col])
+        macd_signal: float = float(latest[self.macd_signal_col])
+        
+        atr_val = latest.get(self.atr_col, pd.NA)
+        atr = float(atr_val) if not pd.isna(atr_val) else pd.NA
 
-        if rsi_value < self.oversold:
-            # The further below 30, the more confident the BUY signal
-            # RSI 0 → confidence 1.0, RSI 30 → confidence 0.0
-            confidence = min((self.oversold - rsi_value) / self.oversold, 1.0)
-            return MonkeySignal(self.name, Action.BUY, confidence)
+        # Logic checks
+        is_buy = (rsi > 50) and (macd > 0) and (macd > macd_signal)
+        is_sell = (rsi < 50) and (macd < 0) and (macd < macd_signal)
 
-        elif rsi_value > self.overbought:
-            # The further above 70, the more confident the SELL signal
-            # RSI 100 → confidence 1.0, RSI 70 → confidence 0.0
-            max_range = 100.0 - self.overbought
-            confidence = min((rsi_value - self.overbought) / max_range, 1.0)
-            return MonkeySignal(self.name, Action.SELL, confidence)
+        if not is_buy and not is_sell:
+            return MonkeySignal(self.name, Action.WAIT, 0.0)
 
+        # Confidence calculation
+        rsi_strength = min(abs(rsi - 50) / 50.0, 1.0)
+        
+        if pd.isna(atr) or atr <= 0:
+            macd_strength = 0.5
         else:
-            return MonkeySignal(self.name, Action.WAIT, 0.0)
+            macd_strength = min(abs(macd) / (atr * 0.1), 1.0)
+            
+        confidence = (rsi_strength + macd_strength) / 2.0
+
+        if is_buy:
+            return MonkeySignal(self.name, Action.BUY, confidence)
+        else:
+            return MonkeySignal(self.name, Action.SELL, confidence)

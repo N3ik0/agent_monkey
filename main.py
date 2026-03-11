@@ -77,7 +77,14 @@ def build_orchestrator(interval: str = "1d") -> MarketOrchestrator:
         
     monkeys = [
         TrendMonkey(name="TrendMonkey", fast_col=fast_sma, slow_col=slow_sma, weight=1.0),
-        MomentumMonkey(name="MomentumMonkey", rsi_col="RSI_14", weight=1.0),
+        MomentumMonkey(
+            name="MomentumMonkey", 
+            rsi_col="RSI_14", 
+            macd_col="MACD_line", 
+            macd_signal_col="MACD_signal", 
+            atr_col="ATR_14", 
+            weight=1.0
+        ),
     ]
     return MarketOrchestrator(monkeys=monkeys, activation_threshold=0.4)
 
