@@ -41,15 +41,15 @@ class BacktestEngine:
         if not signals:
             return self._empty_result(ticker)
             
-        # Map signals by Date for O(1) chronological lookup during iteration
-        signal_map = {s["Date"]: s for s in signals}
-        first_signal_date = signals[0]["Date"]
+        # Map signals by Datetime for O(1) chronological lookup during iteration
+        signal_map = {s.get("Datetime", s["Date"]): s for s in signals}
+        first_signal_key = signals[0].get("Datetime", signals[0]["Date"])
         
         # Attach readable string dates matching the signal formatting
-        df_dates = pd.Series([str(x.date()) if hasattr(x, 'date') else str(x) for x in processed_df.index], index=processed_df.index)
+        df_dates = pd.Series([str(x) for x in processed_df.index], index=processed_df.index)
         
         # Determine the df index where simulation begins
-        start_indices = np.where(df_dates == first_signal_date)[0]
+        start_indices = np.where(df_dates == first_signal_key)[0]
         if len(start_indices) == 0:
             return self._empty_result(ticker)
             
@@ -232,9 +232,9 @@ class BacktestEngine:
         
         if result['nb_trades'] > 0:
             print(f"\n📝 DETAILED TRADES HISTORY")
-            print(f"{'-'*96}")
-            print(f"{'Entry Date':<12} | {'Exit Date':<12} | {'Dir':<4} | {'Entry':<10} | {'Exit':<10} | {'Size':<8} | {'PnL':<8} | {'Outcome'}")
-            print(f"{'-'*12}-+-{'-'*12}-+-{'-'*4}-+-{'-'*10}-+-{'-'*10}-+-{'-'*8}-+-{'-'*8}-+-{'-'*7}")
+            print(f"{'-'*110}")
+            print(f"{'Entry Date':<19} | {'Exit Date':<19} | {'Dir':<4} | {'Entry':<10} | {'Exit':<10} | {'Size':<8} | {'PnL':<8} | {'Outcome'}")
+            print(f"{'-'*19}-+-{'-'*19}-+-{'-'*4}-+-{'-'*10}-+-{'-'*10}-+-{'-'*8}-+-{'-'*8}-+-{'-'*7}")
             
             for t in result['trades']:
                 pnl = t['pnl']
@@ -250,8 +250,8 @@ class BacktestEngine:
                 dir_color = "🟢 BUY " if t['direction'] == "BUY" else "🔴 SELL"
                 
                 print(
-                    f"{t['entry_date']:<12} | "
-                    f"{t['exit_date']:<12} | "
+                    f"{str(t['entry_date'])[:19]:<19} | "
+                    f"{str(t['exit_date'])[:19]:<19} | "
                     f"{dir_color:<4} | "
                     f"{t['entry']:<10.2f} | "
                     f"{t['exit_price']:<10.2f} | "

@@ -136,8 +136,8 @@ def run_backtest(
     print(f"\n{'='*70}")
     print(f"  MACRO BACKTEST: {ticker} — Last {effective_lookback} trading days")
     print(f"{'='*70}\n")
-    print(f"{'Date':<14} {'Signal':<8} {'Confidence':<12} {'Score':<10} {'Agents Log'}")
-    print(f"{'-'*14} {'-'*8} {'-'*12} {'-'*10} {'-'*40}")
+    print(f"{'Date':<19} {'Signal':<8} {'Confidence':<12} {'Score':<10} {'Agents Log'}")
+    print(f"{'-'*19} {'-'*8} {'-'*12} {'-'*10} {'-'*40}")
 
     for i in range(effective_lookback, 0, -1):
         # Slice up to row index to avoid look-ahead bias
@@ -147,6 +147,7 @@ def run_backtest(
 
         consensus = orchestrator.get_consensus(data_slice)
         consensus["Date"] = date_label
+        consensus["Datetime"] = str(data_slice.index[-1])
         results.append(consensus)
 
         # Color-coded signal
@@ -159,7 +160,7 @@ def run_backtest(
             signal_display = f"⚪ {signal}"
 
         print(
-            f"{date_label:<14} {signal_display:<8} "
+            f"{str(consensus['Datetime'])[:19]:<19} {signal_display:<8} "
             f"{consensus['Confiance']:<12.2f} "
             f"{consensus['Raw_Score']:<10.4f} "
             f"{consensus['Log_Agents']}"
