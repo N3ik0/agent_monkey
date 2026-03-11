@@ -55,11 +55,18 @@ class BacktestEngine:
             
         start_idx = start_indices[0]
         
+        pending_entry = None
         for i in range(start_idx, len(processed_df)):
             row = processed_df.iloc[i]
             date_str = df_dates.iloc[i]
             
-            # 1. Update existing position (Check TP / SL execution)
+            # a. Activate pending_entry if exists (= enter position at start of this candle)
+            if pending_entry is not None and not is_in_position:
+                current_trade = pending_entry
+                is_in_position = True
+                pending_entry = None
+
+            # b. Update existing position (Check TP / SL execution)
             if is_in_position:
                 high = float(row['high'])
                 low = float(row['low'])
@@ -108,8 +115,8 @@ class BacktestEngine:
                     is_in_position = False
                     current_trade = None
 
-            # 2. Check for new signals if no position is active
-            if not is_in_position and date_str in signal_map:
+            # c. Check for new signals if no position is active
+            if not is_in_position and pending_entry is None and date_str in signal_map:
                 sig_info = signal_map[date_str]
                 signal = sig_info["Signal"]
                 
@@ -137,7 +144,7 @@ class BacktestEngine:
                             money_at_risk = capital * self.risk_per_trade
                             position_size = money_at_risk / risk_per_unit
                             
-                            current_trade = {
+                            pending_entry = {
                                 'ticker': ticker,
                                 'entry_date': date_str,
                                 'direction': signal,
@@ -147,7 +154,6 @@ class BacktestEngine:
                                 'position_size': position_size,
                                 'confidence': sig_info.get('Confiance', 0.0)
                             }
-                            is_in_position = True
 
         nb_trades = len(trades)
         wins = [t for t in trades if t['outcome'] == 'WIN']
