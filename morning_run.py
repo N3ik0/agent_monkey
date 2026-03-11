@@ -15,14 +15,13 @@ def scan_market(watchlist: List[str], period: str = "6mo", interval: str = "1d")
     Scans the provided watchlist and generates TradePlans using the default MAS setup.
     Errors on single assets are caught and logged without breaking the whole process.
     """
+    # 1. Fetch raw data via the Router (Fail-Fast inside router, caught here)
     router = DataFetcherRouter()
     pipeline = build_pipeline()
     orchestrator = build_orchestrator()
     
-    # Extract RiskMonkey from orchestrator explicitly
-    risk_monkey = next((m for m in orchestrator.monkeys if isinstance(m, RiskMonkey)), None)
-    if not risk_monkey:
-        raise RuntimeError("Fatal error: RiskMonkey not found in the orchestrator.")
+    # Instantiate RiskMonkey explicitly for TradePlan generation
+    risk_monkey = RiskMonkey()
         
     plans = []
     

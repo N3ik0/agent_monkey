@@ -56,7 +56,6 @@ def build_orchestrator() -> MarketOrchestrator:
     monkeys = [
         TrendMonkey(name="TrendMonkey", fast_col="SMA_20", slow_col="SMA_50", weight=1.0),
         MomentumMonkey(name="MomentumMonkey", rsi_col="RSI_14", weight=1.0),
-        RiskMonkey(name="RiskMonkey", atr_col="ATR_14", weight=1.0),
     ]
     return MarketOrchestrator(monkeys=monkeys, activation_threshold=0.4)
 
@@ -147,8 +146,8 @@ def run_backtest(
     print(f"{'='*70}")
 
     # 6. Generate TradePlan for the latest signal
-    risk_monkey = next((m for m in orchestrator.monkeys if isinstance(m, RiskMonkey)), None)
-    if risk_monkey and results:
+    risk_monkey = RiskMonkey(name="RiskMonkey", atr_col="ATR_14", weight=1.0)
+    if results:
         trade_plan = risk_monkey.compute_trade_plan(processed_df, results[-1], ticker)
         print(f"\n{trade_plan.to_markdown()}\n")
 
